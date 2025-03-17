@@ -79,6 +79,7 @@ class ListViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # Only return lists created by the current user
         return List.objects.filter(user=self.request.user).order_by('order')
+    
 
     def perform_create(self, serializer):
         # Set the current user when creating a new list
