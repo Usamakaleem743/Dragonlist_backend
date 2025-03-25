@@ -6,7 +6,7 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, get_user_model
 from django.shortcuts import get_object_or_404
-from .models import Board, List, Card, Label, Checklist, ChecklistItem, Attachment, CardLocation, CardMember, CardDate, Comment
+from .models import Board, List, Card, Label, Checklist, ChecklistItem, Attachment, CardLocation, CardMember, CardDate, Comment, BoardMember
 from .serializers import (
     BoardSerializer, ListSerializer, CardSerializer, LabelSerializer, 
     ChecklistSerializer, ChecklistItemSerializer, AttachmentSerializer, 
@@ -19,6 +19,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from .services.ai_service import AIService
 import asyncio
+from django.db import models
+from django.db.models import Q
 
 User = get_user_model()
 
@@ -75,65 +77,76 @@ class AuthViewSet(viewsets.ViewSet):
 class ListViewSet(viewsets.ModelViewSet):
     serializer_class = ListSerializer
     permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get', 'post', 'patch', 'delete']
 
     def get_queryset(self):
-        # Only return lists created by the current user
-        return List.objects.filter(user=self.request.user).order_by('order')
-    
-
-    def perform_create(self, serializer):
-        # Set the current user when creating a new list
-        order = get_next_order(List.objects.filter(user=self.request.user))
-        serializer.save(user=self.request.user, order=order)
+        # For list-specific operations (update, delete), we need to check board membership
+        if self.action in ['update', 'partial_update', 'destroy']:
+            return List.objects.filter(
+                board__board_members__user=self.request.user
+            )
+        
+        # For list operations (get all lists)
+        board_id = self.request.query_params.get('board_id')
+        if not board_id:
+            return List.objects.none()
+        return List.objects.filter(
+            board_id=board_id,
+            board__board_members__user=self.request.user
+        ).order_by('order')
 
     def perform_update(self, serializer):
-        try:
-            if 'order' in self.request.data:
-                # Only reorder lists belonging to the current user
-                other_lists = List.objects.filter(
-                    user=self.request.user
-                ).exclude(id=self.get_object().id)
-                new_order = float(self.request.data['order'])
-                
-                for list_obj in other_lists:
-                    if list_obj.order >= new_order:
-                        list_obj.order = list_obj.order + 1
-                        list_obj.save()
-                
-                serializer.save(order=new_order)
-            else:
-                serializer.save()
-        except Exception as e:
-            print(f"Error in perform_update: {str(e)}")
-            raise e
+        instance = self.get_object()
+        # Ensure user has access to the board
+        if not instance.board.board_members.filter(user=self.request.user).exists():
+            raise PermissionDenied("You don't have access to this board")
+        serializer.save()
+
+    def perform_create(self, serializer):
+        board_id = self.request.data.get('board')
+        if not board_id:
+            raise ValidationError("Board ID is required")
+        
+        board = Board.objects.get(id=board_id)
+        if not board.board_members.filter(user=self.request.user).exists():
+            raise PermissionDenied("You don't have access to this board")
+            
+        last_order = List.objects.filter(board_id=board_id).aggregate(
+            models.Max('order'))['order__max'] or 0
+        serializer.save(order=last_order + 1)
 
 class CardViewSet(viewsets.ModelViewSet):
     serializer_class = CardSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        # Only return cards created by the current user
-        return Card.objects.filter(user=self.request.user).select_related('list')
+        return Card.objects.filter(
+            board__board_members__user=self.request.user
+        ).select_related('list')
 
     def perform_create(self, serializer):
         list_obj = serializer.validated_data['list']
+        board = serializer.validated_data['board']
         
-        # Ensure the list belongs to the current user
-        if list_obj.user != self.request.user:
-            raise PermissionDenied("You can only create cards in your own lists")
+        # Ensure the user has access to the board
+        if not board.board_members.filter(user=self.request.user).exists():
+            raise PermissionDenied("You don't have access to this board")
             
-        order = get_next_order(Card.objects.filter(
-            list=list_obj,
-            user=self.request.user
-        ))
-        serializer.save(user=self.request.user, order=order)
+        # Get the next order value for the card
+        last_order = Card.objects.filter(list=list_obj).aggregate(
+            models.Max('order'))['order__max'] or 0
+        next_order = last_order + 1
+        
+        serializer.save(order=next_order)
 
     def perform_update(self, serializer):
         if 'order' in self.request.data:
             list_obj = self.get_object().list
-            reorder_items(Card.objects.filter(list=list_obj), 
-                         self.get_object().id, 
-                         int(self.request.data['order']))
+            reorder_items(
+                Card.objects.filter(list=list_obj), 
+                self.get_object().id, 
+                int(self.request.data['order'])
+            )
         else:
             serializer.save()
 
@@ -602,6 +615,112 @@ class CommentViewSet(viewsets.ModelViewSet):
         comment.content = request.data.get('content')
         comment.save()
         serializer = self.get_serializer(comment)
+        return Response(serializer.data)
+
+class BoardViewSet(viewsets.ModelViewSet):
+    serializer_class = BoardSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Board.objects.filter(
+            Q(owner=self.request.user) | 
+            Q(board_members__user=self.request.user)
+        ).distinct()
+
+    def perform_create(self, serializer):
+        board = serializer.save(owner=self.request.user)
+        # Create BoardMember entry for owner
+        BoardMember.objects.create(board=board, user=self.request.user)
+
+    def update(self, request, *args, **kwargs):
+        board = self.get_object()
+        # Only board owner can update the board
+        if board.owner != request.user:
+            return Response(
+                {'error': 'Only board owner can update the board'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        board = self.get_object()
+        # Only board owner can delete the board
+        if board.owner != request.user:
+            return Response(
+                {'error': 'Only board owner can delete the board'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['POST'])
+    def add_member(self, request, pk=None):
+        board = self.get_object()
+        user_id = request.data.get('user_id')
+        
+        if board.owner != request.user:
+            return Response(
+                {'error': 'Only board owner can add members'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            user = User.objects.get(id=user_id)
+            # Check if already a member
+            if BoardMember.objects.filter(board=board, user=user).exists():
+                return Response(
+                    {'error': 'User is already a board member'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            BoardMember.objects.create(board=board, user=user)
+            return Response(BoardSerializer(board).data)
+            
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['DELETE'])
+    def remove_member(self, request, pk=None):
+        board = self.get_object()
+        user_id = request.data.get('user_id')
+        
+        if board.owner != request.user:
+            return Response(
+                {'error': 'Only board owner can remove members'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        try:
+            user = User.objects.get(id=user_id)
+            if user == board.owner:
+                return Response(
+                    {'error': 'Cannot remove board owner'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            member = BoardMember.objects.filter(board=board, user=user).first()
+            if not member:
+                return Response(
+                    {'error': 'User is not a board member'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            member.delete()
+            return Response(BoardSerializer(board).data)
+            
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=True, methods=['GET'])
+    def members(self, request, pk=None):
+        """Get all members of a board"""
+        board = self.get_object()
+        serializer = UserSerializer(board.members.all(), many=True)
         return Response(serializer.data)
 
 # Additional ViewSets for other models...

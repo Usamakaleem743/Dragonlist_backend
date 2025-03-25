@@ -1,9 +1,9 @@
 from django.contrib import admin
-from .models import List, Card, Label, ChecklistItem, CardDate
+from .models import List, Card, Label, ChecklistItem, CardDate, Board
 
 @admin.register(List)
 class ListAdmin(admin.ModelAdmin):
-    list_display = ('title', 'order')
+    list_display = ('title', 'order' , 'board' ,'color')
     search_fields = ('title',)
 
 @admin.register(Card)
@@ -30,3 +30,9 @@ class DateAdmin(admin.ModelAdmin):
     list_display = ('card', 'start_date', 'due_date', 'is_complete')
     list_filter = ('is_complete',)
     search_fields = ('card', 'start_date', 'due_date')
+
+@admin.register(Board)
+class BoardAdmin(admin.ModelAdmin):
+    list_display = ('title', 'created_at', 'updated_at')
+    search_fields = ('title', 'description')
+    ordering = ('-created_at',)
