@@ -5,19 +5,21 @@ from .views import (
     LabelViewSet, ChecklistViewSet,
     UserViewSet, remove_card_dates,
     add_card_member, remove_card_member, add_card_dates,
-    ChecklistItemViewSet, AttachmentViewSet, CardLocationViewSet, CommentViewSet
+    ChecklistItemViewSet, AttachmentViewSet, CardLocationViewSet, CommentViewSet,
+    BoardViewSet
 )
 
 router = DefaultRouter()
-router.register(r'lists', ListViewSet, basename='list')
 router.register(r'cards', CardViewSet, basename='card')
 router.register(r'labels', LabelViewSet, basename='label')
+router.register(r'lists', ListViewSet, basename='list')
 router.register(r'checklists', ChecklistViewSet, basename='checklist')
 router.register(r'checklist-items', ChecklistItemViewSet, basename='checklist-item')
 router.register(r'attachments', AttachmentViewSet, basename='attachment')
 router.register(r'card-locations', CardLocationViewSet, basename='card-location')
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'comments', CommentViewSet, basename='comment')
+router.register(r'boards', BoardViewSet, basename='board')
 urlpatterns = [
     path('', include(router.urls)),
     path('cards/<int:card_pk>/members/add_member/', add_card_member, name='add-card-member'),
@@ -32,7 +34,9 @@ urlpatterns = [
     path('checklist-items/', ChecklistItemViewSet.as_view({'get': 'list'}), name='get-checklist-items'),
     path('cards/<int:card_pk>/comments/', CommentViewSet.as_view({'get': 'list' ,'post': 'create'}), name='get-comments'),
     path('cards/<int:card_pk>/labels/<int:label_pk>/', CardViewSet.as_view({'delete': 'remove_label'}), name='remove-card-label'),
-    path('cards/<int:pk>/optimize-description/', 
-         CardViewSet.as_view({'post': 'optimize_description'}), 
+    path('cards/<int:pk>/optimize-description/', CardViewSet.as_view({'post': 'optimize_description'}), 
          name='card-optimize-description'),
+    path('boards/<int:pk>/members/', BoardViewSet.as_view({'get': 'members'}), name='board-members'),
+    path('boards/<int:pk>/members/add/', BoardViewSet.as_view({'post': 'add_member'}), name='board-add-member'),
+    path('boards/<int:pk>/members/remove/', BoardViewSet.as_view({'delete': 'remove_member'}), name='board-remove-member'),
 ]   

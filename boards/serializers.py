@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Board, List, Card, Label, Checklist, ChecklistItem, Attachment, CardLocation, CardMember, CardDate, Comment
+from .models import Board, List, Card, Label, Checklist, ChecklistItem, Attachment, CardLocation, CardMember, CardDate, Comment, BoardMember
 
 User = get_user_model()
 
@@ -87,7 +87,7 @@ class CardSerializer(serializers.ModelSerializer):
             'title', 
             'description', 
             'list', 
-            'user',
+            'board',
             'order',
             'labels',
             'members',
@@ -100,7 +100,7 @@ class CardSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'user']
+        read_only_fields = ['created_at', 'updated_at']
 
     def get_labels(self, obj):
         return [{'id': label.id, 'title': label.title, 'color': label.color} for label in obj.labels.all()]
@@ -123,19 +123,51 @@ class ListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = List
-        fields = ['id', 'title', 'order', 'user', 'created_at', 'updated_at', 'cards']
-        read_only_fields = ['created_at', 'updated_at', 'user']
+        fields = [
+            'id', 
+            'title', 
+            'board', 
+            'order',
+            'color',
+            'cards',
+            'created_at', 
+            'updated_at'
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+        extra_kwargs = {
+            'board': {'required': True},
+            'order': {'read_only': True},
+            'color': {'required': False, 'default': '#282E33'}  # Default dark color
+        }
+
+    def create(self, validated_data):
+        # Set default color if not provided
+        if 'color' not in validated_data:
+            validated_data['color'] = '#282E33'  # Default dark color
+        return super().create(validated_data)
+
+class BoardMemberSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    
+    class Meta:
+        model = BoardMember
+        fields = ['id', 'user', 'created_at']
+        read_only_fields = ['created_at']
 
 class BoardSerializer(serializers.ModelSerializer):
-    lists = ListSerializer(many=True, read_only=True)
-    members = UserSerializer(many=True, read_only=True)
-    labels = LabelSerializer(many=True, read_only=True)
     owner = UserSerializer(read_only=True)
+    members = serializers.SerializerMethodField()
+    lists = ListSerializer(many=True, read_only=True)
 
     class Meta:
         model = Board
         fields = ('id', 'title', 'background', 'owner', 'members',
-                 'lists', 'labels', 'created_at', 'updated_at')
+                 'lists', 'created_at', 'updated_at')
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_members(self, obj):
+        board_members = BoardMember.objects.filter(board=obj)
+        return BoardMemberSerializer(board_members, many=True).data
 
 # Authentication Serializers
 class RegisterSerializer(serializers.ModelSerializer):
