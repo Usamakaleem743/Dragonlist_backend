@@ -1,4 +1,4 @@
-from django.urls import path, include
+from django.urls import path, include, re_path
 from rest_framework.routers import DefaultRouter
 from .views import (
     ListViewSet, CardViewSet, 
@@ -36,7 +36,4 @@ urlpatterns = [
     path('cards/<int:card_pk>/labels/<int:label_pk>/', CardViewSet.as_view({'delete': 'remove_label'}), name='remove-card-label'),
     path('cards/<int:pk>/optimize-description/', CardViewSet.as_view({'post': 'optimize_description'}), 
          name='card-optimize-description'),
-    path('boards/<int:pk>/members/', BoardViewSet.as_view({'get': 'members'}), name='board-members'),
-    path('boards/<int:pk>/members/add/', BoardViewSet.as_view({'post': 'add_member'}), name='board-add-member'),
-    path('boards/<int:pk>/members/remove/', BoardViewSet.as_view({'delete': 'remove_member'}), name='board-remove-member'),
 ]   

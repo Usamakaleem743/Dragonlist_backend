@@ -11,7 +11,7 @@ from .serializers import (
     BoardSerializer, ListSerializer, CardSerializer, LabelSerializer, 
     ChecklistSerializer, ChecklistItemSerializer, AttachmentSerializer, 
     CardLocationSerializer, RegisterSerializer, LoginSerializer, UserSerializer,
-    CardMemberSerializer, CardDateSerializer, CommentSerializer
+    CardMemberSerializer, CardDateSerializer, CommentSerializer, BoardMemberSerializer
 )
 from .permissions import IsBoardMember, IsListBoardMember, IsCardBoardMember
 from .utils import get_next_order, reorder_items
@@ -652,39 +652,45 @@ class BoardViewSet(viewsets.ModelViewSet):
             )
         return super().destroy(request, *args, **kwargs)
 
-    @action(detail=True, methods=['POST'])
-    def add_member(self, request, pk=None):
+    @action(detail=True, methods=['get', 'post'])
+    def members(self, request, pk=None):
         board = self.get_object()
-        user_id = request.data.get('user_id')
         
-        if board.owner != request.user:
-            return Response(
-                {'error': 'Only board owner can add members'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        if request.method == 'GET':
+            board_members = BoardMember.objects.filter(board=board)
+            serializer = BoardMemberSerializer(board_members, many=True)
+            return Response(serializer.data)
         
-        try:
-            user = User.objects.get(id=user_id)
-            # Check if already a member
-            if BoardMember.objects.filter(board=board, user=user).exists():
+        elif request.method == 'POST':
+            if board.owner != request.user:
                 return Response(
-                    {'error': 'User is already a board member'},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {'error': 'Only board owner can add members'},
+                    status=status.HTTP_403_FORBIDDEN
                 )
             
-            BoardMember.objects.create(board=board, user=user)
-            return Response(BoardSerializer(board).data)
-            
-        except User.DoesNotExist:
-            return Response(
-                {'error': 'User not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            user_id = request.data.get('user_id')
+            try:
+                user = User.objects.get(id=user_id)
+                # Check if already a member
+                if BoardMember.objects.filter(board=board, user=user).exists():
+                    return Response(
+                        {'error': 'User is already a board member'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                board_member = BoardMember.objects.create(board=board, user=user)
+                return Response(BoardMemberSerializer(board_member).data, 
+                             status=status.HTTP_201_CREATED)
+                
+            except User.DoesNotExist:
+                return Response(
+                    {'error': 'User not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
-    @action(detail=True, methods=['DELETE'])
-    def remove_member(self, request, pk=None):
+    @action(detail=True, methods=['delete'], url_path='members/(?P<user_id>[^/.]+)')
+    def remove_member(self, request, pk=None, user_id=None):
         board = self.get_object()
-        user_id = request.data.get('user_id')
         
         if board.owner != request.user:
             return Response(
@@ -708,19 +714,12 @@ class BoardViewSet(viewsets.ModelViewSet):
                 )
             
             member.delete()
-            return Response(BoardSerializer(board).data)
+            return Response(status=status.HTTP_204_NO_CONTENT)
             
         except User.DoesNotExist:
             return Response(
                 {'error': 'User not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
-
-    @action(detail=True, methods=['GET'])
-    def members(self, request, pk=None):
-        """Get all members of a board"""
-        board = self.get_object()
-        serializer = UserSerializer(board.members.all(), many=True)
-        return Response(serializer.data)
 
 # Additional ViewSets for other models...
