@@ -1,0 +1,53 @@
+Attempting to send email to usamakaleem743@gmail.com for board Usama
+Email sending failed: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5b1f17b1804b1-43ec17b0dbesm101304645e9.33 - gsmtp')
+Email settings: HOST=smtp.gmail.com, PORT=587, FROM=usamakaleem322@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board Usama
+Email sending failed: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials ffacd0b85a97d-39c301acec9sm9093205f8f.40 - gsmtp')
+Email settings: HOST=smtp.gmail.com, PORT=587, FROM=usamakaleem322@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board Usama
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board Completed
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board Completed
+Email sending failed: send_mail() got an unexpected keyword argument 'reply_to'
+Email settings: HOST=smtp.gmail.com, PORT=587, FROM=usamakaleem322@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board Completed
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to  usamakaleem743@gmail.com for board Completed
+Email sent successfully to  usamakaleem743@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board Completed
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board Completed
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem322@gmail.com for board 322
+Email sent successfully to usamakaleem322@gmail.com
+Attempting to send email to usamakaleem322@gmail.com for board 322
+Email sent successfully to usamakaleem322@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board 322
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem322@gmail.com for board 322
+Email sent successfully to usamakaleem322@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board 322
+Email sending failed: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials ffacd0b85a97d-39d893f0a80sm1583511f8f.68 - gsmtp')
+Email settings: HOST=smtp.gmail.com, PORT=587
+Attempting to send email to usamakaleem743@gmail.com for board 322
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board 322
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board 322
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board 322
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board 322
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem743@gmail.com for board 322
+Email sent successfully to usamakaleem743@gmail.com
+Attempting to send email to usamakaleem322@gmail.com for board 322
+Email sent successfully to usamakaleem322@gmail.com
+Attempting to send email to usamakaleem322@gmail.com for board 322
+Email sent successfully to usamakaleem322@gmail.com
+Attempting to send email to usamakaleem322@gmail.com for board 322
+Email sent successfully to usamakaleem322@gmail.com
+Attempting to send email to usamakaleem322@gmail.com for board 322
+Email sent successfully to usamakaleem322@gmail.com
+Invitation creation failed: Invalid field name(s) for model BoardMember: 'role'.

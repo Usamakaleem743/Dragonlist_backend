@@ -6,12 +6,12 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, get_user_model
 from django.shortcuts import get_object_or_404
-from .models import Board, List, Card, Label, Checklist, ChecklistItem, Attachment, CardLocation, CardMember, CardDate, Comment, BoardMember
+from .models import Board, List, Card, Label, Checklist, ChecklistItem, Attachment, CardLocation, CardMember, CardDate, Comment, BoardMember, BoardInvitation
 from .serializers import (
     BoardSerializer, ListSerializer, CardSerializer, LabelSerializer, 
     ChecklistSerializer, ChecklistItemSerializer, AttachmentSerializer, 
     CardLocationSerializer, RegisterSerializer, LoginSerializer, UserSerializer,
-    CardMemberSerializer, CardDateSerializer, CommentSerializer
+    CardMemberSerializer, CardDateSerializer, CommentSerializer, BoardMemberSerializer
 )
 from .permissions import IsBoardMember, IsListBoardMember, IsCardBoardMember
 from .utils import get_next_order, reorder_items
@@ -21,8 +21,16 @@ from .services.ai_service import AIService
 import asyncio
 from django.db import models
 from django.db.models import Q
+import uuid
+from django.core.mail import send_mail
+from django.conf import settings
+import logging
+from django.core.mail import EmailMessage
+from django.contrib.auth.hashers import make_password
 
 User = get_user_model()
+
+logger = logging.getLogger(__name__)
 
 # Create your views here.
 
@@ -618,8 +626,9 @@ class CommentViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 class BoardViewSet(viewsets.ModelViewSet):
+    queryset = Board.objects.all()
     serializer_class = BoardSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return Board.objects.filter(
@@ -652,39 +661,45 @@ class BoardViewSet(viewsets.ModelViewSet):
             )
         return super().destroy(request, *args, **kwargs)
 
-    @action(detail=True, methods=['POST'])
-    def add_member(self, request, pk=None):
+    @action(detail=True, methods=['get', 'post'])
+    def members(self, request, pk=None):
         board = self.get_object()
-        user_id = request.data.get('user_id')
         
-        if board.owner != request.user:
-            return Response(
-                {'error': 'Only board owner can add members'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        if request.method == 'GET':
+            board_members = BoardMember.objects.filter(board=board)
+            serializer = BoardMemberSerializer(board_members, many=True)
+            return Response(serializer.data)
         
-        try:
-            user = User.objects.get(id=user_id)
-            # Check if already a member
-            if BoardMember.objects.filter(board=board, user=user).exists():
+        elif request.method == 'POST':
+            if board.owner != request.user:
                 return Response(
-                    {'error': 'User is already a board member'},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {'error': 'Only board owner can add members'},
+                    status=status.HTTP_403_FORBIDDEN
                 )
             
-            BoardMember.objects.create(board=board, user=user)
-            return Response(BoardSerializer(board).data)
-            
-        except User.DoesNotExist:
-            return Response(
-                {'error': 'User not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            user_id = request.data.get('user_id')
+            try:
+                user = User.objects.get(id=user_id)
+                # Check if already a member
+                if BoardMember.objects.filter(board=board, user=user).exists():
+                    return Response(
+                        {'error': 'User is already a board member'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                board_member = BoardMember.objects.create(board=board, user=user)
+                return Response(BoardMemberSerializer(board_member).data, 
+                             status=status.HTTP_201_CREATED)
+                
+            except User.DoesNotExist:
+                return Response(
+                    {'error': 'User not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
-    @action(detail=True, methods=['DELETE'])
-    def remove_member(self, request, pk=None):
+    @action(detail=True, methods=['delete'], url_path='members/(?P<user_id>[^/.]+)')
+    def remove_member(self, request, pk=None, user_id=None):
         board = self.get_object()
-        user_id = request.data.get('user_id')
         
         if board.owner != request.user:
             return Response(
@@ -708,7 +723,7 @@ class BoardViewSet(viewsets.ModelViewSet):
                 )
             
             member.delete()
-            return Response(BoardSerializer(board).data)
+            return Response(status=status.HTTP_204_NO_CONTENT)
             
         except User.DoesNotExist:
             return Response(
@@ -716,11 +731,235 @@ class BoardViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-    @action(detail=True, methods=['GET'])
-    def members(self, request, pk=None):
-        """Get all members of a board"""
+    @action(detail=True, methods=['post'], url_path='invite')
+    def invite(self, request, pk=None):
         board = self.get_object()
-        serializer = UserSerializer(board.members.all(), many=True)
-        return Response(serializer.data)
+        email = request.data.get('email')
+        
+        if not email:
+            return Response(
+                {'error': 'Email is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Generate username and password from email
+            email_username = email.split('@')[0]
+            
+            # Create user if doesn't exist
+            user, created = User.objects.get_or_create(
+                email=email,
+                defaults={
+                    'username': email_username,
+                    'password': make_password(email_username),  # Use email username as password
+                    'first_name': email_username.capitalize()
+                }
+            )
+
+            # Create invitation
+            invitation, created = BoardInvitation.objects.get_or_create(
+                board=board,
+                email=email,
+                defaults={
+                    'invited_by': request.user,
+                    'token': str(uuid.uuid4())
+                }
+            )
+
+            # Add user to board members (removed role field)
+            board_member, member_created = BoardMember.objects.get_or_create(
+                board=board,
+                user=user
+            )
+
+            # Generate invitation URL
+            invite_url = f"{settings.FRONTEND_URL}/boards/invite?board_id={board.id}&email={email}"
+            
+            # Prepare email content
+            subject = f'Invitation to join board: {board.title}'
+            inviter_name = request.user.get_full_name() or request.user.username
+            
+            # Include login credentials if new user
+            credentials_info = f"""
+            Your login credentials:
+            Email: {email}
+            Password: {email_username}
+            """ if created else ""
+            
+            message = f'''
+            Hi there!
+
+            {inviter_name} has invited you to join the board "{board.title}" on DragonList.
+            
+            {credentials_info}
+            
+            Click here to accept the invitation: {invite_url}
+
+            If you didn't expect this invitation, you can ignore this email.
+
+            Best regards,
+            The DragonList Team
+            '''
+            
+            # Send email
+            try:
+                email_message = EmailMessage(
+                    subject=subject,
+                    body=message,
+                    from_email=settings.EMAIL_HOST_USER,
+                    to=[email],
+                    reply_to=[request.user.email]
+                )
+                email_message.send(fail_silently=False)
+                
+                return Response({
+                    'message': 'Invitation sent successfully',
+                    'email': email,
+                    'user_created': created,
+                    'user': UserSerializer(user).data,
+                    'board_member': BoardMemberSerializer(board_member).data
+                })
+                
+            except Exception as e:
+                logger.error(f"Email sending failed: {str(e)}")
+                return Response({
+                    'error': 'Failed to send invitation email',
+                    'details': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        except Exception as e:
+            logger.error(f"Invitation creation failed: {str(e)}")
+            return Response({
+                'error': 'Failed to create invitation',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['get'])
+    def invitation_details(self, request):
+        board_id = request.query_params.get('board_id')
+        email = request.query_params.get('email')
+        
+        if not board_id or not email:
+            return Response(
+                {'error': 'Both board_id and email are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            invitation = BoardInvitation.objects.get(
+                board_id=board_id,
+                email=email,
+                accepted=False
+            )
+            
+            return Response({
+                'board': {
+                    'id': invitation.board.id,
+                    'title': invitation.board.title,
+                },
+                'invited_by': invitation.invited_by.get_full_name() or invitation.invited_by.username,
+                'email': invitation.email
+            })
+            
+        except BoardInvitation.DoesNotExist:
+            return Response(
+                {'error': 'Invalid invitation'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+    @action(detail=False, methods=['post'])
+    def accept_invitation(self, request):
+        board_id = request.data.get('board_id')
+        email = request.data.get('email')
+        
+        if not board_id or not email:
+            return Response(
+                {'error': 'Both board_id and email are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            invitation = BoardInvitation.objects.get(
+                board_id=board_id,
+                email=email,
+                accepted=False
+            )
+            
+            # Generate password from email (part before @)
+            email_username = email.split('@')[0]
+            
+            try:
+                # Create new user with email username as password
+                user = User.objects.create_user(
+                    username=email_username,
+                    email=email,
+                    password=email_username,  # Using email username as password
+                    first_name=email_username.capitalize(),  # Optional: Set a default first name
+                )
+
+                # Add user to board members
+                board_member = BoardMember.objects.create(
+                    board=invitation.board,
+                    user=user
+                )
+                
+                # Mark invitation as accepted
+                invitation.accepted = True
+                invitation.save()
+
+                # Send credentials email
+                subject = 'Your DragonList Account Credentials'
+                message = f'''
+                Hi there!
+
+                Your account has been created on DragonList. Here are your login credentials:
+
+                Email: {email}
+                Password: {email_username}
+
+                Please login and change your password as soon as possible.
+
+                Login URL: {settings.FRONTEND_URL}/login
+
+                Best regards,
+                The DragonList Team
+                '''
+                
+                try:
+                    from django.core.mail import EmailMessage
+                    
+                    email_message = EmailMessage(
+                        subject=subject,
+                        body=message,
+                        from_email=settings.EMAIL_HOST_USER,
+                        to=[email],
+                    )
+                    
+                    email_message.send(fail_silently=False)
+                    
+                except Exception as e:
+                    logger.error(f"Failed to send credentials email: {str(e)}")
+                    # Continue execution even if email fails
+                    pass
+
+                return Response({
+                    'message': 'Account created and invitation accepted successfully',
+                    'board': BoardSerializer(invitation.board).data,
+                    'member': BoardMemberSerializer(board_member).data,
+                    'email_sent': True
+                }, status=status.HTTP_200_OK)
+
+            except Exception as e:
+                logger.error(f"Failed to create user or add board member: {str(e)}")
+                return Response({
+                    'error': 'Failed to process invitation',
+                    'details': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        except BoardInvitation.DoesNotExist:
+            return Response({
+                'error': 'Invalid invitation',
+                'details': 'This invitation does not exist or has already been accepted'
+            }, status=status.HTTP_404_NOT_FOUND)
 
 # Additional ViewSets for other models...

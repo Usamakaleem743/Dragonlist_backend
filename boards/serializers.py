@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Board, List, Card, Label, Checklist, ChecklistItem, Attachment, CardLocation, CardMember, CardDate, Comment, BoardMember
+from .models import Board, List, Card, Label, Checklist, ChecklistItem, Attachment, CardLocation, CardMember, CardDate, Comment, BoardMember, BoardInvitation
 
 User = get_user_model()
 
@@ -222,4 +222,10 @@ class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = ['id', 'content', 'author', 'created_at', 'updated_at']
-        read_only_fields = ['author'] 
+        read_only_fields = ['author']
+
+class BoardInvitationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BoardInvitation
+        fields = ['id', 'board', 'email', 'invited_by', 'created_at', 'accepted']
+        read_only_fields = ['invited_by', 'created_at', 'accepted'] 

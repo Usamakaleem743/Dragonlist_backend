@@ -185,3 +185,17 @@ class Comment(models.Model):
 
     def __str__(self):
         return f'Comment by {self.author.username} on {self.card.title}'
+
+class BoardInvitation(models.Model):
+    board = models.ForeignKey(Board, on_delete=models.CASCADE, related_name='invitations')
+    email = models.EmailField()
+    invited_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_invitations')
+    created_at = models.DateTimeField(auto_now_add=True)
+    accepted = models.BooleanField(default=False)
+    token = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        unique_together = ('board', 'email')
+
+    def __str__(self):
+        return f"Invitation to {self.board.title} for {self.email}"
