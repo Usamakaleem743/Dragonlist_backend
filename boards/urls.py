@@ -36,10 +36,7 @@ urlpatterns = [
     path('cards/<int:card_pk>/labels/<int:label_pk>/', CardViewSet.as_view({'delete': 'remove_label'}), name='remove-card-label'),
     path('cards/<int:pk>/optimize-description/', CardViewSet.as_view({'post': 'optimize_description'}), 
          name='card-optimize-description'),
-<<<<<<< HEAD
     path('boards/<int:pk>/invite/', BoardViewSet.as_view({'post': 'invite'}), name='board-invite'),
     path('boards/accept-invitation/', BoardViewSet.as_view({'post': 'accept_invitation'}), name='accept-invitation'),
     path('boards/invitation-details/<str:token>/', BoardViewSet.as_view({'get': 'invitation_details'}), name='invitation-details'),
-=======
->>>>>>> 40028f4e15b95bc96103540c26150c96cbaecc00
 ]   
