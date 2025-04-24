@@ -18,6 +18,7 @@ from .utils import get_next_order, reorder_items
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from .services.ai_service import AIService
+from .services.chatbot_service import ChatbotService
 import asyncio
 from django.db import models
 from django.db.models import Q
@@ -27,6 +28,7 @@ from django.conf import settings
 import logging
 from django.core.mail import EmailMessage
 from django.contrib.auth.hashers import make_password
+from asgiref.sync import sync_to_async, async_to_sync
 
 User = get_user_model()
 
@@ -773,7 +775,7 @@ class BoardViewSet(viewsets.ModelViewSet):
             )
 
             # Generate invitation URL
-            invite_url = f"{settings.FRONTEND_URL}/boards/invite?board_id={board.id}&email={email}"
+            invite_url = f"http://dragonlistai.s3-website-us-east-1.amazonaws.com/boards/invite?board_id={board.id}&email={email}"
             
             # Prepare email content
             subject = f'Invitation to join board: {board.title}'
@@ -963,3 +965,28 @@ class BoardViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_404_NOT_FOUND)
 
 # Additional ViewSets for other models...
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def chat_with_ai(request):
+    try:
+        message = request.data.get('message')
+        if not message:
+            return Response(
+                {'error': 'Message is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        chatbot = ChatbotService()
+        response = chatbot.get_response(
+            user_query=message,
+            user_id=request.user.id
+        )
+        
+        return Response({'response': response})
+    except Exception as e:
+        print(f"Chat error: {str(e)}")
+        return Response(
+            {'error': 'Internal server error', 'detail': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

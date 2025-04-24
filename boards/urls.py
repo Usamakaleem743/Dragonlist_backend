@@ -6,7 +6,7 @@ from .views import (
     UserViewSet, remove_card_dates,
     add_card_member, remove_card_member, add_card_dates,
     ChecklistItemViewSet, AttachmentViewSet, CardLocationViewSet, CommentViewSet,
-    BoardViewSet
+    BoardViewSet, chat_with_ai
 )
 
 router = DefaultRouter()
@@ -39,4 +39,5 @@ urlpatterns = [
     path('boards/<int:pk>/invite/', BoardViewSet.as_view({'post': 'invite'}), name='board-invite'),
     path('boards/accept-invitation/', BoardViewSet.as_view({'post': 'accept_invitation'}), name='accept-invitation'),
     path('boards/invitation-details/<str:token>/', BoardViewSet.as_view({'get': 'invitation_details'}), name='invitation-details'),
+    path('chat/', chat_with_ai, name='chat-with-ai'),
 ]   
